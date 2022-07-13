@@ -1,8 +1,10 @@
 extern crate tokio;
 extern crate reqwest;
 
+use std::collections::HashMap;
+use std::fmt::Write;
 use std::fs::File;
-use std::io::{Write};
+use std::io::Write as IOWrite;
 use std::path::Path;
 
 use structopt::StructOpt;
@@ -43,17 +45,15 @@ enum Command {
     },
 
     #[structopt(
-    about = "Create the model for the database table or JSON directly.",
+    about = "Create the model from JSON directly.",
     author = "Ming Chang (mail@mingchang.tw)",
-    long_about = "\nA CLI helper for Spring Web projects.\n\n'model' subcommand will create the model for the database table or JSON directly."
+    long_about = "\nA CLI helper for Spring Web projects.\n\n'model' subcommand will create the model from JSON directly."
     )]
     Model {
-        #[structopt(help = "File which includes either:\n1. The CREATE statement for the table.\n2. JSON (Please specify Java type of field in value).")]
-        input_file: String,
-        #[structopt(help = "Output file name.")]
-        output_file: String,
-        #[structopt(help = "Output type: \n- 'lombok' for Java class with Lombok annotations. (@Data, @AllArgsConstructor and @NoArgsConstructor)\n- 'class' for Java class. \n- 'record' for Java record. (JDK 14 or newer, less compatible than classes)")]
-        output_type: String,
+        #[structopt(help = "Model name.")]
+        model_name: String,
+        #[structopt(help = "Package name, e.g. tw.mingchang.project.")]
+        package_name: String
     },
 }
 
@@ -63,9 +63,8 @@ async fn main() {
         Init { package_name, package_type, java_version, project_type, file_name } => {
             init(package_name, package_type, java_version, project_type, file_name).await;
         }
-        Model { input_file, output_file, output_type } => {
-            println!("args: {}, {}, {}", input_file, output_file, output_type);
-            println!("Functionality not implemented yet.");
+        Model { model_name, package_name } => {
+            model(model_name, package_name).await;
         }
     }
 }
@@ -188,4 +187,39 @@ async fn init(package_name: String, package_type: String, java_version: i32, pro
     };
     file.write_all(&*content).expect("Unable to write to file");
     println!("Project downloaded successfully as {}.", file_name);
+}
+
+async fn model(model_name: String, package_name: String) {
+    let file_name = format!("{}.java", model_name);
+    let path = Path::new(&file_name);
+
+    println!("Please paste the JSON below. (Newline is not allowed. Press Enter/Return to continue, Ctrl+C to cancel)\n");
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).unwrap();
+
+    let head = format!("package {}.{};\n\n@Data\n@AllArgsConstructor\n@NoArgsConstructor\npublic class {} {{", package_name, model_name, model_name);
+
+    let mut body = String::new();
+
+    let value = serde_json::from_str::<HashMap<String, String>>(input.as_str());
+    match value {
+        Ok(x) => {
+            println!("\nJSON parsed successfully, will create model class with following fields:");
+            x.iter().for_each(|a| {
+                println!("{}, Java type: {}", a.0, a.1);
+                body.write_str(&format!("\n\tprivate {} {};", a.1, a.0)).expect("Unable to write to string");
+            });
+            println!()
+        }
+        Err(e) => {
+            println!("{}", e)
+        }
+    }
+
+    let mut file = match File::create(&path) {
+        Ok(file) => file,
+        Err(why) => panic!("File creation failed, reason: {}", why),
+    };
+    file.write_all(format!("{}\n{}\n\n}}", head, body).as_ref()).expect("Unable to write to file");
+    println!("Model created successfully as {}.", file_name);
 }
