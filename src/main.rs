@@ -15,7 +15,7 @@ name = "spring-helper",
 about = "A CLI helper for Spring Web projects.",
 author = "Ming Chang (mail@mingchang.tw)",
 long_about = "\nA CLI helper for Spring Web projects.",
-global_settings = &[AppSettings::ColoredHelp, AppSettings::ArgRequiredElseHelp],
+global_settings = & [AppSettings::ColoredHelp, AppSettings::ArgRequiredElseHelp],
 )]
 struct Opt {
     #[structopt(subcommand)]
@@ -39,7 +39,7 @@ enum Command {
         #[structopt(help = "Project type.\n- maven\n- gradle")]
         project_type: String,
         #[structopt(help = "Specify the file name.\nIf not specified, 'project.zip' will be used as the file name.")]
-        file_name: Option<String>
+        file_name: Option<String>,
     },
 
     #[structopt(
@@ -60,10 +60,10 @@ enum Command {
 #[tokio::main]
 async fn main() {
     match Opt::from_args().cmd {
-        Init {package_name, package_type, java_version, project_type, file_name} => {
+        Init { package_name, package_type, java_version, project_type, file_name } => {
             init(package_name, package_type, java_version, project_type, file_name).await;
         }
-        Model {input_file, output_file, output_type} => {
+        Model { input_file, output_file, output_type } => {
             println!("args: {}, {}, {}", input_file, output_file, output_type);
             println!("Functionality not implemented yet.");
         }
@@ -71,20 +71,24 @@ async fn main() {
 }
 
 async fn init(package_name: String, package_type: String, java_version: i32, project_type: String, file_name: Option<String>) {
-    let file_name = file_name.unwrap_or("project.zip".to_string());
+    let file_name = file_name.unwrap_or_else(|| "project.zip".to_string());
     let path = Path::new(&file_name);
 
     // split package name into parts
-    let mut package_name_array = package_name.split(".").collect::<Vec<&str>>();
+    let mut package_name_array = package_name.split('.').collect::<Vec<&str>>();
 
-    if package_name_array.len() > 3 {
-        println!("Package name structure is longer than excepted, string parts after index 1 will all be defined as artifactId.");
-        for i in 2..package_name_array.len() {
-            package_name_array[i] = package_name_array[i - 1];
+    match package_name_array.len().cmp(&3) {
+        std::cmp::Ordering::Greater => {
+            println!("Package name structure is longer than excepted, string parts after index 1 will all be defined as artifactId.");
+            for i in 2..package_name_array.len() {
+                package_name_array[i] = package_name_array[i - 1];
+            }
         }
-    } else if package_name_array.len() < 3 {
-        println!("Package name structure is too short.");
-        return;
+        std::cmp::Ordering::Less => {
+            println!("Package name structure is too short.");
+            return;
+        }
+        std::cmp::Ordering::Equal => {}
     }
 
     // define url as mutable
@@ -108,35 +112,35 @@ async fn init(package_name: String, package_type: String, java_version: i32, pro
 
     // set baseDir
     url.push_str("baseDir=");
-    url.push_str(&package_name_array[2]);
-    url.push_str("&");
+    url.push_str(package_name_array[2]);
+    url.push('&');
 
     // set groupId
     url.push_str("groupId=");
-    url.push_str(&package_name_array[0]);
-    url.push_str(".");
-    url.push_str(&package_name_array[1]);
-    url.push_str("&");
+    url.push_str(package_name_array[0]);
+    url.push('.');
+    url.push_str(package_name_array[1]);
+    url.push('&');
 
     // set artifactId
     url.push_str("artifactId=");
-    url.push_str(&package_name_array[2]);
-    url.push_str("&");
+    url.push_str(package_name_array[2]);
+    url.push('&');
 
     // set name
     url.push_str("name=");
-    url.push_str(&package_name_array[2]);
-    url.push_str("&");
+    url.push_str(package_name_array[2]);
+    url.push('&');
 
     // set description
     url.push_str("description=");
-    url.push_str(&package_name_array[2]);
-    url.push_str("&");
+    url.push_str(package_name_array[2]);
+    url.push('&');
 
     // set packageName
     url.push_str("packageName=");
     url.push_str(&package_name);
-    url.push_str("&");
+    url.push('&');
 
     // set packageType
     match package_type.to_lowercase().as_str() {
