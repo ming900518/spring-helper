@@ -2,6 +2,7 @@ extern crate reqwest;
 
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::fs;
 use std::fs::File;
 use std::io::Write as IOWrite;
 use std::path::Path;
@@ -267,7 +268,6 @@ fn get_schema_table(mut client: Client, schema_name: String) -> Vec<String> {
 
 fn get_column_info(mut client: Client, table_name: String, schema_name: String) -> Vec<(String, String)> {
     let mut column_info_list: Vec<(String, String)> = Vec::new();
-    println!("select column_name, udt_name from INFORMATION_SCHEMA.COLUMNS where table_name = '{}' and table_schema = '{}';", table_name, schema_name);
     client.query(format!("select column_name, udt_name from INFORMATION_SCHEMA.COLUMNS where table_name = '{}' and table_schema = '{}';", table_name, schema_name).as_str(), &[]).unwrap().iter().for_each(|row| {
         let column_name: String = row.get(0);
         let udt_name: &str = row.get(1);
@@ -283,7 +283,7 @@ fn get_column_info(mut client: Client, table_name: String, schema_name: String) 
             "bool" => "Boolean".to_string(),
             "numeric" => "BigDecimal".to_string(),
             _ => {
-                println!("\nColumn name \"{}\" has unknown type \"{}\".\nPlease specify a vaild Java type: (Press Enter/Return to continue, Ctrl+C to cancel)\n", column_name, udt_name);
+                println!("\nColumn name \"{}\" has unknown type \"{}\".\nPlease specify a valid Java type: (Press Enter/Return to continue, Ctrl+C to cancel)\n", column_name, udt_name);
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input).unwrap();
                 input
@@ -297,19 +297,23 @@ fn get_column_info(mut client: Client, table_name: String, schema_name: String) 
 fn create_model_file(url: String, table_name: String, package_name: String, schema_name: String) {
     let client = Client::connect(url.as_str(), NoTls).unwrap();
     let model_name = table_name.to_case(Case::UpperCamel);
-    let file_name = format!("{}.java", model_name);
+    fs::create_dir_all("model").expect("Unable to create directory.");
+    let file_name = format!("./model/{}.java", model_name);
     let path = Path::new(&file_name);
     let head = format!("package {}.{};\n\n@Data\n@AllArgsConstructor\n@NoArgsConstructor\n@Table(schema = \"{}\", value = \"{}\")\npublic class {} {{", package_name, model_name, schema_name, table_name, model_name);
     let mut body = String::new();
     let column_info = get_column_info(client, table_name.clone(), schema_name);
-    column_info.iter().for_each(|(column_name, column_type)| {
-        println!("{}, Java type: {}", column_name, column_type);
-        body.write_str(&format!("\n\tprivate {} {};", column_type, column_name)).expect("Unable to write to string");
+    column_info.iter().enumerate().for_each(|(index, (column_name, column_type))| {
+        if index == 0 {
+            body.write_str(&format!("\n\t@Id\n\t@Column(\"{}\")\n\tprivate {} {};",column_name, column_type, column_name.to_case(Case::Camel))).expect("Unable to write to string");
+        } else {
+            body.write_str(&format!("\n\t@Column(\"{}\")\n\tprivate {} {};",column_name, column_type, column_name.to_case(Case::Camel))).expect("Unable to write to string");
+        }
     });
     let mut file = match File::create(path) {
         Ok(file) => file,
         Err(why) => panic!("File creation failed, reason: {}", why),
     };
     file.write_all(format!("{}\n{}\n\n}}", head, body).as_ref()).expect("Unable to write to file");
-    println!("Model created successfully for table \"{}\" as {}.", table_name, file_name);
+    println!("Model created successfully for table \"{}\" as {}.\n", table_name, file_name);
 }
