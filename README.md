@@ -4,9 +4,9 @@
 
 ## 功能
 
-- `init`：從[Spring Initalizr](https://start.spring.io)下載包含Spring WebFlux、Spring Data R2DBC與PostgreSQL Driver的新專案.
+- `init`：從[Spring Initalizr](https://start.spring.io)下載包含Spring WebFlux、Spring Data R2DBC與PostgreSQL Driver的新專案。
 
-> 範例：產生Package Name為`tw.mingchang.project`、使用JDK 18及編譯出JAR的Spring Boot Project，並存於名為`mingchang.zip`的壓縮檔.
+> 範例：產生Package Name為`tw.mingchang.project`、使用JDK 18及編譯出JAR的Spring Boot Project，並存於名為`mingchang.zip`的壓縮檔。
 >
 > macOS指令：
 > ```
