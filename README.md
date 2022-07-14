@@ -35,7 +35,7 @@
 > spring-helper.exe model Test tw.mingchang.project
 > ```
 - `quick-start`：從PostgreSQL中讀取指定Schema的Table與Column，並自動產生空的Controller、Service、Model與Repository。
-> 範例：利用`postgresql://root:root@localhost:5432/postgres`連接PostgreSQL資料庫，為`tw.mingchang.project`專案產生Schema中所有Table的Controller、Service、Model與Repository。
+> 範例：利用`postgresql://root:root@localhost:5432/postgres`連接PostgreSQL資料庫，為`tw.mingchang.project`專案產生Schema`testdb`中所有Table的Controller、Service、Model與Repository。
 >
 > macOS指令：
 > ```
