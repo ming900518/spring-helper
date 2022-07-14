@@ -58,9 +58,9 @@ enum Command {
         package_name: String,
     },
     #[structopt(
-    about = "Create basic CRUD APIs with PostgreSQL tables.",
+    about = "Create basic structure with PostgreSQL tables.",
     author = "Ming Chang (mail@mingchang.tw)",
-    long_about = "\nA CLI helper for Spring Web projects.\n\n'quick-start' subcommand will create basic CRUD APIs with PostgreSQL tables."
+    long_about = "\nA CLI helper for Spring Web projects.\n\n'quick-start' subcommand will create basic structure (Controller, Service, Service Implement and Spring Data R2DBC Repository) with PostgreSQL tables."
     )]
     QuickStart {
         #[structopt(help = "PostgreSQL URL, e.g. postgresql://user:password@localhost:5432/dbname")]
