@@ -7,10 +7,11 @@ use std::fs::File;
 use std::io::Write as IOWrite;
 use std::path::Path;
 
-use structopt::StructOpt;
-use structopt::clap::AppSettings;
 use convert_case::{Case, Casing};
 use postgres::{Client, NoTls};
+use structopt::clap::AppSettings;
+use structopt::StructOpt;
+
 use crate::Command::{Init, Model, QuickStart};
 
 #[derive(StructOpt, Debug)]
@@ -241,79 +242,178 @@ fn model(model_name: String, package_name: String) {
 }
 
 fn quick_start(url: String, schema_name: String, package_name: String) {
-    let client = Client::connect(url.as_str(), NoTls).unwrap();
+    let mut client = Client::connect(url.as_str(), NoTls).unwrap();
 
-    build_model(url, client, schema_name, package_name);
-    // build_controller(model_name, package_name);
-    // build_service(model_name, package_name);
-    // build_service_impl(model_name, package_name);
-}
-
-fn build_model(url: String, client: Client, schema_name: String, package_name: String) {
-    let table_name_list = get_schema_table(client, schema_name.clone());
-    for table_name in table_name_list {
-        println!("Creating model class for table {}", table_name);
-        create_model_file(url.clone(), table_name.clone(), package_name.clone(), schema_name.clone());
-    }
-}
-
-fn get_schema_table(mut client: Client, schema_name: String) -> Vec<String> {
     let mut table_name_list: Vec<String> = Vec::new();
     client.query(format!("select table_name from INFORMATION_SCHEMA.TABLES where table_schema = '{}';", schema_name).as_str(), &[]).unwrap().iter().for_each(|row| {
         let value: &str = row.get(0);
         table_name_list.push(value.to_string());
     });
-    table_name_list
-}
 
-fn get_column_info(mut client: Client, table_name: String, schema_name: String) -> Vec<(String, String)> {
-    let mut column_info_list: Vec<(String, String)> = Vec::new();
-    client.query(format!("select column_name, udt_name from INFORMATION_SCHEMA.COLUMNS where table_name = '{}' and table_schema = '{}';", table_name, schema_name).as_str(), &[]).unwrap().iter().for_each(|row| {
-        let column_name: String = row.get(0);
-        let udt_name: &str = row.get(1);
-        let column_type: String = match udt_name {
-            "int4" => "Integer".to_string(),
-            "_int4" => "List<Integer>".to_string(),
-            "varchar" => "String".to_string(),
-            "_varchar" => "List<String>".to_string(),
-            "text" => "String".to_string(),
-            "date" => "LocalDate".to_string(),
-            "time" => "LocalTime".to_string(),
-            "timestamp" => "LocalDateTime".to_string(),
-            "bool" => "Boolean".to_string(),
-            "numeric" => "BigDecimal".to_string(),
-            _ => {
-                println!("\nColumn name \"{}\" has unknown type \"{}\".\nPlease specify a valid Java type: (Press Enter/Return to continue, Ctrl+C to cancel)\n", column_name, udt_name);
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input).unwrap();
-                input
-            }
-        };
-        column_info_list.push((column_name, column_type));
-    });
-    column_info_list
-}
+    build_controller(table_name_list.clone(), package_name.clone());
+    build_service(table_name_list.clone(), package_name.clone());
+    build_repository(table_name_list.clone(), package_name.clone());
+    build_model(table_name_list, url, schema_name, package_name);
 
-fn create_model_file(url: String, table_name: String, package_name: String, schema_name: String) {
-    let client = Client::connect(url.as_str(), NoTls).unwrap();
-    let model_name = table_name.to_case(Case::UpperCamel);
-    fs::create_dir_all("model").expect("Unable to create directory.");
-    let file_name = format!("./model/{}.java", model_name);
-    let path = Path::new(&file_name);
-    let head = format!("package {}.{};\n\n@Data\n@AllArgsConstructor\n@NoArgsConstructor\n@Table(schema = \"{}\", value = \"{}\")\npublic class {} {{", package_name, model_name, schema_name, table_name, model_name);
-    let mut body = String::new();
-    let column_info = get_column_info(client, table_name.clone(), schema_name);
-    column_info.iter().enumerate().for_each(|(index, (column_name, column_type))| {
-        if index == 0 {
-            body.write_str(&format!("\n\t@Id\n\t@Column(\"{}\")\n\tprivate {} {};",column_name, column_type, column_name.to_case(Case::Camel))).expect("Unable to write to string");
-        } else {
-            body.write_str(&format!("\n\t@Column(\"{}\")\n\tprivate {} {};",column_name, column_type, column_name.to_case(Case::Camel))).expect("Unable to write to string");
+    fn build_model(table_name_list: Vec<String>, url: String, schema_name: String, package_name: String) {
+        let table_name_list = table_name_list;
+        for table_name in table_name_list {
+            create_model_file(url.clone(), table_name.clone(), package_name.clone(), schema_name.clone());
         }
-    });
-    let mut file = match File::create(path) {
-        Ok(file) => file,
-        Err(why) => panic!("File creation failed, reason: {}", why),
-    };
-    file.write_all(format!("{}\n{}\n\n}}", head, body).as_ref()).expect("Unable to write to file");
-    println!("Model created successfully for table \"{}\" as {}.\n", table_name, file_name);
+
+        fn get_column_info(mut client: Client, table_name: String, schema_name: String) -> Vec<(String, String)> {
+            let mut column_info_list: Vec<(String, String)> = Vec::new();
+            client.query(format!("select column_name, udt_name from INFORMATION_SCHEMA.COLUMNS where table_name = '{}' and table_schema = '{}';", table_name, schema_name).as_str(), &[]).unwrap().iter().for_each(|row| {
+                let column_name: String = row.get(0);
+                let udt_name: &str = row.get(1);
+                let column_type: String = match udt_name {
+                    "int4" => "Integer".to_string(),
+                    "_int4" => "List<Integer>".to_string(),
+                    "varchar" => "String".to_string(),
+                    "_varchar" => "List<String>".to_string(),
+                    "text" => "String".to_string(),
+                    "date" => "LocalDate".to_string(),
+                    "time" => "LocalTime".to_string(),
+                    "timestamp" => "LocalDateTime".to_string(),
+                    "bool" => "Boolean".to_string(),
+                    "numeric" => "BigDecimal".to_string(),
+                    _ => {
+                        println!("\nColumn name \"{}\" has unknown type \"{}\".\nPlease specify a valid Java type: (Press Enter/Return to continue, Ctrl+C to cancel)\n", column_name, udt_name);
+                        let mut input = String::new();
+                        std::io::stdin().read_line(&mut input).unwrap();
+                        input
+                    }
+                };
+                column_info_list.push((column_name, column_type));
+            });
+            column_info_list
+        }
+
+        fn create_model_file(url: String, table_name: String, package_name: String, schema_name: String) {
+            let client = Client::connect(url.as_str(), NoTls).unwrap();
+            let model_name = table_name.to_case(Case::UpperCamel);
+            fs::create_dir_all("model").expect("Unable to create directory.");
+            let file_name = format!("./model/{}.java", model_name);
+            let path = Path::new(&file_name);
+            let head = format!("package {}.{};\n\n@Data\n@AllArgsConstructor\n@NoArgsConstructor\n@Table(schema = \"{}\", value = \"{}\")\npublic class {} {{", package_name, model_name, schema_name, table_name, model_name);
+            let mut body = String::new();
+            let column_info = get_column_info(client, table_name.clone(), schema_name);
+            column_info.iter().enumerate().for_each(|(index, (column_name, column_type))| {
+                if index == 0 {
+                    body.write_str(&format!("\n\t@Id\n\t@Column(\"{}\")\n\tprivate {} {};", column_name, column_type, column_name.to_case(Case::Camel))).expect("Unable to write to string");
+                } else {
+                    body.write_str(&format!("\n\t@Column(\"{}\")\n\tprivate {} {};", column_name, column_type, column_name.to_case(Case::Camel))).expect("Unable to write to string");
+                }
+            });
+            let mut file = match File::create(path) {
+                Ok(file) => file,
+                Err(why) => panic!("File creation failed, reason: {}", why),
+            };
+            file.write_all(format!("{}\n{}\n\n}}", head, body).as_ref()).expect("Unable to write to file");
+            println!("Model created successfully for table \"{}\" as {}.\n", table_name, file_name);
+        }
+    }
+
+    fn build_controller(table_name_list: Vec<String>, package_name: String) {
+        table_name_list.iter().for_each(|table_name| {
+            let upper_name = table_name.to_case(Case::UpperCamel);
+            let lower_name = table_name.to_case(Case::Camel);
+            let controller_name = format!("{}Controller", upper_name);
+            fs::create_dir_all("controller").expect("Unable to create directory.");
+            let file_name = format!("./controller/{}.java", controller_name);
+            let path = Path::new(&file_name);
+            let content = format!(
+                r#"package {}.controller;
+
+@RestController
+@RequestMapping(value = "/{}")
+public class {} {{
+
+    private final {}Service {}Service;
+
+    public {}({}Service {}Service) {{
+        this.{}Service = {}Service;
+    }}
+"#
+                , package_name, lower_name, controller_name, upper_name, lower_name, controller_name, upper_name, lower_name, lower_name, lower_name);
+            let mut file = match File::create(path) {
+                Ok(file) => file,
+                Err(why) => panic!("File creation failed, reason: {}", why),
+            };
+            file.write_all(format!("{}\n\n}}", content).as_ref()).expect("Unable to write to file");
+            println!("Controller created successfully for table \"{}\" as {}.\n", table_name, file_name);
+        })
+    }
+
+    fn build_service(table_name_list: Vec<String>, package_name: String) {
+        table_name_list.iter().for_each(|table_name| {
+            let upper_name = table_name.to_case(Case::UpperCamel);
+            let lower_name = table_name.to_case(Case::Camel);
+            let service_name = format!("{}Service", upper_name);
+            fs::create_dir_all("service").expect("Unable to create directory.");
+            let file_name = format!("./service/{}.java", service_name);
+            let path = Path::new(&file_name);
+            let content = format!(
+                r#"package {}.service;
+
+public interface {} {{
+
+"#
+                , package_name, lower_name);
+            let mut file = match File::create(path) {
+                Ok(file) => file,
+                Err(why) => panic!("File creation failed, reason: {}", why),
+            };
+            file.write_all(format!("{}\n\n}}", content).as_ref()).expect("Unable to write to file");
+
+            let service_impl_name = format!("{}ServiceImpl", upper_name);
+            fs::create_dir_all("service/impl").expect("Unable to create directory.");
+            let impl_file_name = format!("./service/impl/{}.java", service_impl_name);
+            let impl_path = Path::new(&impl_file_name);
+
+            let impl_content = format!(
+                r#"package {}.service.impl;
+
+@Service
+public class {} implements {} {{
+
+    private final {}Repository {}Repository;
+
+    public {}({}Repository {}Repository) {{
+        this.{}Repository = {}Repository;
+    }}
+"#
+                , package_name, service_impl_name, service_name, upper_name, lower_name, service_impl_name, upper_name, lower_name, lower_name, lower_name);
+            let mut impl_file = match File::create(impl_path) {
+                Ok(impl_file) => impl_file,
+                Err(why) => panic!("File creation failed, reason: {}", why),
+            };
+            impl_file.write_all(format!("{}\n}}", impl_content).as_ref()).expect("Unable to write to file");
+
+            println!("Service created successfully for table \"{}\" as {}.\n", table_name, file_name);
+        });
+    }
+
+    fn build_repository(table_name_list: Vec<String>, package_name: String) {
+        table_name_list.iter().for_each(|table_name| {
+            let upper_name = table_name.to_case(Case::UpperCamel);
+            let repository_name = format!("{}Repository", upper_name);
+            fs::create_dir_all("repository").expect("Unable to create directory.");
+            let file_name = format!("./repository/{}.java", repository_name);
+            let path = Path::new(&file_name);
+            let content = format!(
+                r#"package {}.repository;
+
+@Repository
+public interface {} extends R2dbcRepository<{}, Integer> {{
+"#
+                , package_name, repository_name, upper_name);
+            let mut file = match File::create(path) {
+                Ok(file) => file,
+                Err(why) => panic!("File creation failed, reason: {}", why),
+            };
+            file.write_all(format!("{}\n}}", content).as_ref()).expect("Unable to write to file");
+            println!("Repository created successfully for table \"{}\" as {}.\n", table_name, file_name);
+        })
+    }
 }
